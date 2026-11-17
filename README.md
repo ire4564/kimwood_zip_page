@@ -2,7 +2,7 @@
 
 벽 사진 속 크기를 아는 물체(액자, 타일, A4 등)로 사진의 원근을 계산해서, 새 액자를 실제 cm 크기 그대로 배치해 볼 수 있는 웹앱입니다.
 
-**사용하기:** https://ire4564.github.io/kimwood_zip_page/
+**사용하기:** https://ire4564.github.io/kimwood_zip_page/wall-simulator/
 
 ## 주요 기능
 - 사진 보정: 회전 · 수직/수평 원근 (사진 편집 앱처럼 자동 크롭, 보정 전/후 비교)
