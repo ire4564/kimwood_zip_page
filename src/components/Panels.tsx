@@ -94,6 +94,40 @@ function Section({ title, right, children }: { title: string; right?: ReactNode;
   );
 }
 
+/**
+ * 숫자 입력칸: 입력 중에는 사용자가 친 글자를 그대로 보여준다.
+ * - 다 지우면 빈 칸(흐린 0 표시)이고 값은 0(또는 null)으로 적용
+ * - 앞자리 0은 자동으로 지움 (0 → 10 입력 시 "010"이 되지 않게)
+ */
+function NumInput({
+  value, onChange, empty = null, step, min, max,
+}: {
+  value: number | null; onChange(v: number | null): void; empty?: number | null;
+  step?: number; min?: number; max?: number;
+}) {
+  const [text, setText] = useState<string | null>(null); // 입력 중일 때만 사용
+  const shown = text ?? (value == null || value === 0 ? '' : String(value));
+  return (
+    <input
+      type="number"
+      inputMode="decimal"
+      step={step}
+      min={min}
+      max={max}
+      placeholder="0"
+      value={shown}
+      onFocus={() => setText(value == null || value === 0 ? '' : String(value))}
+      onBlur={() => setText(null)}
+      onChange={(e) => {
+        const t = e.target.value.replace(/^(-?)0+(?=\d)/, '$1');
+        setText(t);
+        const v = parseFloat(t);
+        onChange(t === '' || Number.isNaN(v) ? empty : v);
+      }}
+    />
+  );
+}
+
 function Num({
   label, value, onChange, step = 0.1, min, suffix = 'mm',
 }: {
@@ -103,14 +137,7 @@ function Num({
     <label className="field">
       <span className="field-label">{label}</span>
       <div className="field-box">
-        <input
-          type="number"
-          inputMode="decimal"
-          step={step}
-          min={min}
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
-        />
+        <NumInput value={value} step={step} min={min} onChange={onChange} />
         <em>{suffix}</em>
       </div>
     </label>
@@ -155,14 +182,8 @@ function Slider({
       <div className="slider-top">
         <b>{label}</b>
         <div className="slider-val">
-          <input
-            type="number"
-            step={0.1}
-            min={min}
-            max={max}
-            value={value}
-            onChange={(e) => onChange(Math.max(min, Math.min(max, parseFloat(e.target.value) || 0)))}
-          />
+          <NumInput value={value} empty={0} step={0.1} min={min} max={max}
+            onChange={(v) => onChange(Math.max(min, Math.min(max, v ?? 0)))} />
           <em>°</em>
           <button className="icon-btn" title="0으로" disabled={!value} onClick={() => onChange(0)}>↺</button>
         </div>
@@ -326,7 +347,7 @@ export function CalibratePanel({
 // ───────────────────────── 2. 배치 ─────────────────────────
 export function ArrangePanel({
   frames, selectedId, onAdd, onUpdate, onDelete, onDuplicate, onSelect,
-  snap, setSnap, showGrid, setShowGrid, opacity, setOpacity, onExport, exporting, canExport,
+  snap, setSnap, showGrid, setShowGrid, opacity, setOpacity,
 }: {
   frames: Frame[]; selectedId: string | null;
   onAdd(w: number, h: number, name: string): void;
@@ -337,7 +358,6 @@ export function ArrangePanel({
   snap: boolean; setSnap(v: boolean): void;
   showGrid: boolean; setShowGrid(v: boolean): void;
   opacity: number; setOpacity(v: number): void;
-  onExport(): void; exporting: boolean; canExport: boolean;
 }) {
   const [w, setW] = useState<number | null>(null);
   const [h, setH] = useState<number | null>(null);
@@ -463,11 +483,6 @@ export function ArrangePanel({
         </Section>
         </div>
       )}
-      <div className="foot-actions">
-        <button className="btn-primary" disabled={!canExport || exporting} onClick={onExport}>
-          {exporting ? '저장 중…' : '결과를 PNG로 저장'}
-        </button>
-      </div>
     </>
   );
 }

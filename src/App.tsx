@@ -313,7 +313,6 @@ export default function App() {
                   frames={proj.frames} selectedId={selectedId}
                   onAdd={addFrame} onUpdate={updateFrame} onDelete={deleteFrame} onDuplicate={duplicate} onSelect={setSelectedId}
                   snap={snap} setSnap={setSnap} showGrid={showGrid} setShowGrid={setShowGrid} opacity={opacity} setOpacity={setOpacity}
-                  onExport={doExport} exporting={busy} canExport={!!Hwi}
                 />
               )}
               {mode === 'measure' && (
