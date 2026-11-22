@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Viewport, type ViewportHandle } from './components/Viewport';
-import { ArrangePanel, CalibratePanel, MeasurePanel, StraightenPanel } from './components/Panels';
+import { ArrangePanel, CalibratePanel, StraightenPanel } from './components/Panels';
 import { solveCalibration, poseCorners, type RefFrame } from './lib/calibrate';
 import { computeCorrection, isIdentity, noAdjust } from './lib/correction';
 import { idbGet, idbSet, loadImage } from './lib/storage';
@@ -15,7 +15,6 @@ const STEPS: { id: Mode; label: string }[] = [
   { id: 'straighten', label: '사진 보정' },
   { id: 'calibrate', label: '기준 지정' },
   { id: 'arrange', label: '액자 배치' },
-  { id: 'measure', label: '길이 측정' },
 ];
 
 export default function App() {
@@ -38,8 +37,7 @@ export default function App() {
   const hAdjust = useHistory(proj.adjust, (v) => setProj((p) => ({ ...p, adjust: v })), loaded);
   const hCal = useHistory(proj.calibration, (v) => setProj((p) => ({ ...p, calibration: v })), loaded);
   const hFrames = useHistory(proj.frames, (v) => setProj((p) => ({ ...p, frames: v })), loaded);
-  const hMeas = useHistory(proj.measurements, (v) => setProj((p) => ({ ...p, measurements: v })), loaded);
-  const histories = { straighten: hAdjust, calibrate: hCal, arrange: hFrames, measure: hMeas };
+  const histories = { straighten: hAdjust, calibrate: hCal, arrange: hFrames };
   const resetHistory = () => Object.values(histories).forEach((h) => h.reset());
   const histRef = useRef(histories);
   histRef.current = histories;
@@ -157,7 +155,6 @@ export default function App() {
         imageH: img.naturalHeight,
         adjust: noAdjust(),
         calibration: { ...p.calibration, refs: p.calibration.refs.map((r) => ({ ...r, corners: null })) },
-        measurements: [],
       }));
       setMode('straighten');
       setSelectedId(null);
@@ -205,7 +202,6 @@ export default function App() {
     straighten: !isIdentity(proj.adjust) || !!Hwi,
     calibrate: !!Hwi,
     arrange: proj.frames.length > 0,
-    measure: false,
   };
   const reachable = (m: Mode) => !!proj.imageBlob && (m === 'straighten' || m === 'calibrate' || !!Hwi);
 
@@ -287,7 +283,6 @@ export default function App() {
             onCompare={setCompare}
             frames={proj.frames}
             selectedId={selectedId}
-            measurements={proj.measurements}
             snap={snap}
             showGrid={showGrid || (mode === 'calibrate' && !!Hwi)}
             opacity={opacity}
@@ -295,7 +290,6 @@ export default function App() {
             onFrame={updateFrame}
             onDeleteFrame={deleteFrame}
             onSelect={setSelectedId}
-            onMeasurements={(m) => setProj((p) => ({ ...p, measurements: m }))}
           />
           <section className="inspector">
             <div className="insp-scroll">
@@ -314,9 +308,6 @@ export default function App() {
                   onAdd={addFrame} onUpdate={updateFrame} onDelete={deleteFrame} onDuplicate={duplicate} onSelect={setSelectedId}
                   snap={snap} setSnap={setSnap} showGrid={showGrid} setShowGrid={setShowGrid} opacity={opacity} setOpacity={setOpacity}
                 />
-              )}
-              {mode === 'measure' && (
-                <MeasurePanel list={proj.measurements} Hiw={Hiw} onChange={(m) => setProj((p) => ({ ...p, measurements: m }))} />
               )}
             </div>
             <p className="hint"><kbd>Space</kbd>+드래그 이동 · <kbd>⌘</kbd>+스크롤 확대 · <kbd>⌘</kbd><kbd>Z</kbd> 되돌리기</p>

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { apply, dist, isConvexQuad, type Mat3 } from '../lib/homography';
+import { isConvexQuad } from '../lib/homography';
 import { refReady, type RefFrame, type Solution } from '../lib/calibrate';
 import { fileToArtDataURL } from '../lib/storage';
 import { noAdjust, type Adjust } from '../lib/correction';
-import type { Calibration, Frame, Measurement } from '../types';
+import type { Calibration, Frame } from '../types';
 
 /** cm(내부 단위) → mm 표시 문자열 */
 const mm = (cm: number) => { const v = Math.round(cm * 100) / 10; return Number.isInteger(v) ? String(v) : v.toFixed(1); };
@@ -483,32 +483,6 @@ export function ArrangePanel({
         </Section>
         </div>
       )}
-    </>
-  );
-}
-
-// ───────────────────────── 3. 측정 ─────────────────────────
-export function MeasurePanel({
-  list, Hiw, onChange,
-}: { list: Measurement[]; Hiw: Mat3 | null; onChange(m: Measurement[]): void }) {
-  return (
-    <>
-      <Head step={4} title="길이 측정" desc="사진 위를 드래그해서 재세요" />
-      <Section title={`측정 ${list.length}개`} right={list.length > 0 && <button className="text-btn" onClick={() => onChange([])}>모두 지우기</button>}>
-        {Hiw && list.length > 0 ? (
-          <div className="list">
-            {list.map((m, i) => (
-              <div key={m.id} className="list-row">
-                <span>측정 {i + 1}</span>
-                <em className="big-num">{mm(dist(apply(Hiw, m.a), apply(Hiw, m.b)))} mm</em>
-                <button className="icon-btn" onClick={() => onChange(list.filter((x) => x.id !== m.id))}>✕</button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="sub">측정한 길이가 없어요</p>
-        )}
-      </Section>
     </>
   );
 }

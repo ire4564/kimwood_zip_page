@@ -67,12 +67,6 @@ export function frameBox(f: Pick<Frame, 'x' | 'y' | 'w' | 'h' | 'rot'>) {
   return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
 }
 
-export interface Measurement {
-  id: string;
-  a: Pt; // 사진 원본 픽셀 좌표
-  b: Pt;
-}
-
 export interface Project {
   imageBlob: Blob | null;
   imageW: number;
@@ -80,10 +74,9 @@ export interface Project {
   adjust: Adjust;
   calibration: Calibration;
   frames: Frame[];
-  measurements: Measurement[];
 }
 
-export type Mode = 'straighten' | 'calibrate' | 'arrange' | 'measure';
+export type Mode = 'straighten' | 'calibrate' | 'arrange';
 
 export const emptyProject = (): Project => ({
   imageBlob: null,
@@ -92,7 +85,6 @@ export const emptyProject = (): Project => ({
   adjust: noAdjust(),
   calibration: { refs: [newRef(1)] },
   frames: [],
-  measurements: [],
 });
 
 export const uid = () => Math.random().toString(36).slice(2, 10);

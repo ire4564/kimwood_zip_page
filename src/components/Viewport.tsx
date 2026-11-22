@@ -9,11 +9,10 @@ import {
   useState,
 } from 'react';
 import { apply, dist, mul, projW, toMatrix3d, type Mat3, type Pt } from '../lib/homography';
-import { frameBox, frameCorners, frameLocal, type Frame, type Measurement, type Mode, type Quad } from '../types';
+import { frameBox, frameCorners, frameLocal, type Frame, type Mode, type Quad } from '../types';
 import type { RefFrame } from '../lib/calibrate';
 import type { Correction } from '../lib/correction';
 import { paintPhoto } from '../lib/export';
-import { uid } from '../types';
 
 const K = 10; // 액자 DOM 내부 해상도 (px / cm)
 const LOUPE = 168;
@@ -29,8 +28,7 @@ type Drag =
   | { t: 'handle'; i: number; start: Pt; orig: Pt; quad: Quad }
   | { t: 'frame'; frame: Frame; start: Pt }
   | { t: 'rotate'; frame: Frame; c: Pt; a0: number }
-  | { t: 'mpt'; id: string; end: 'a' | 'b'; start: Pt; orig: Pt; base: Measurement[] }
-  | { t: 'mnew'; id: string; a: Pt; base: Measurement[] };
+;
 
 export interface ViewportHandle {
   fit(): void;
@@ -58,7 +56,6 @@ interface Props {
   onCompare?(v: boolean): void;
   frames: Frame[];
   selectedId: string | null;
-  measurements: Measurement[];
   snap: boolean;
   showGrid: boolean;
   opacity: number;
@@ -66,7 +63,6 @@ interface Props {
   onFrame(id: string, patch: Partial<Frame>): void;
   onDeleteFrame(id: string): void;
   onSelect(id: string | null): void;
-  onMeasurements(m: Measurement[]): void;
 }
 
 /** cm(내부 단위) → mm 정수 문자열 */
@@ -263,8 +259,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, r
     // 한 손가락으로 하던 작업은 취소하고 원래대로
     if (d) {
       const P = pRef.current;
-      if (d.t === 'mnew' || d.t === 'mpt') P.onMeasurements(d.base);
-      else if (d.t === 'frame') P.onFrame(d.frame.id, { x: d.frame.x, y: d.frame.y });
+      if (d.t === 'frame') P.onFrame(d.frame.id, { x: d.frame.x, y: d.frame.y });
       else if (d.t === 'rotate') P.onFrame(d.frame.id, { rot: d.frame.rot ?? 0 });
       else if (d.t === 'handle') P.onCorners(d.quad);
       else if (d.t === 'rect') P.onCorners(null);
@@ -295,7 +290,6 @@ export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, r
 
     const handle = el.closest('[data-handle]') as HTMLElement | null;
     const frameEl = el.closest('[data-frame]') as HTMLElement | null;
-    const mpt = el.closest('[data-mpt]') as HTMLElement | null;
 
     if (P.mode === 'straighten') return pan();
     if (P.mode === 'calibrate') {
@@ -339,19 +333,6 @@ export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, r
       }
       P.onSelect(null);
       return pan();
-    }
-    if (P.mode === 'measure') {
-      if (mpt) {
-        const [id, end] = mpt.dataset.mpt!.split(':') as [string, 'a' | 'b'];
-        const m = P.measurements.find((m) => m.id === id)!;
-        drag.current = { t: 'mpt', id, end, start: pt, orig: m[end], base: P.measurements };
-        showLoupe(m[end], e.clientX);
-        return;
-      }
-      const id = uid();
-      P.onMeasurements([...P.measurements, { id, a: pt, b: pt }]);
-      drag.current = { t: 'mnew', id, a: pt, base: P.measurements };
-      showLoupe(pt, e.clientX);
     }
   };
 
@@ -421,16 +402,6 @@ export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, r
         P.onFrame(d.frame.id, { rot: deg });
         break;
       }
-      case 'mpt': {
-        const np = { x: d.orig.x + pt.x - d.start.x, y: d.orig.y + pt.y - d.start.y };
-        P.onMeasurements(d.base.map((m) => (m.id === d.id ? { ...m, [d.end]: np } : m)));
-        showLoupe(np, e.clientX);
-        break;
-      }
-      case 'mnew':
-        P.onMeasurements([...d.base, { id: d.id, a: d.a, b: pt }]);
-        showLoupe(pt, e.clientX);
-        break;
     }
   };
 
@@ -449,7 +420,6 @@ export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, r
     if (!d) return;
     const end = toImg(e.clientX, e.clientY);
     if (d.t === 'rect' && (Math.abs(end.x - d.start.x) < 4 || Math.abs(end.y - d.start.y) < 4)) p.onCorners(null);
-    if (d.t === 'mnew' && dist(d.a, end) * viewRef.current.z * p.corr.scale < 4) p.onMeasurements(d.base);
   };
 
   // 돋보기 렌더링
@@ -578,7 +548,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, r
   const mid = (a: Pt, b: Pt) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
   const cursor = drag.current?.t === 'pan' ? 'grabbing' : space ? 'grab'
-    : p.mode === 'measure' || (p.mode === 'calibrate' && !q) ? 'crosshair' : 'default';
+    : p.mode === 'calibrate' && !q ? 'crosshair' : 'default';
 
   return (
     <div
@@ -607,7 +577,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, r
           </svg>
         )}
 
-        {Hwi && (p.mode === 'arrange' || p.mode === 'measure') && (
+        {Hwi && p.mode === 'arrange' && (
           <div className="frames-layer" style={{ pointerEvents: p.mode === 'arrange' ? 'auto' : 'none' }}>
             {p.frames.map((f) => (
               <div
@@ -729,23 +699,6 @@ export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, r
             return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#FF2D55" strokeWidth={1 / z} />;
           })}
 
-          {/* 측정 */}
-          {p.Hiw && p.mode === 'measure' && p.measurements.map((m) => {
-            const d = dist(apply(p.Hiw!, m.a), apply(p.Hiw!, m.b));
-            const ms = { a: Cp(m.a), b: Cp(m.b) };
-            return (
-              <g key={m.id}>
-                <line x1={ms.a.x} y1={ms.a.y} x2={ms.b.x} y2={ms.b.y} stroke="#34C759" strokeWidth={2 / z} />
-                {(['a', 'b'] as const).map((k) => (
-                  <g key={k} data-mpt={`${m.id}:${k}`} className="hit">
-                    <circle cx={ms[k].x} cy={ms[k].y} r={12 / z} fill="transparent" />
-                    <circle cx={ms[k].x} cy={ms[k].y} r={4.5 / z} fill="#fff" stroke="#34C759" strokeWidth={2 / z} />
-                  </g>
-                ))}
-                {label({ x: mid(ms.a, ms.b).x, y: mid(ms.a, ms.b).y - 12 / z }, `${fmt(d)} mm`, '#248A3D')}
-              </g>
-            );
-          })}
         </svg>
       </div>
 
