@@ -1,11 +1,12 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { apply, dist, isConvexQuad, type Mat3 } from '../lib/homography';
 import { refReady, type RefFrame, type Solution } from '../lib/calibrate';
 import { fileToArtDataURL } from '../lib/storage';
 import { noAdjust, type Adjust } from '../lib/correction';
 import type { Calibration, Frame, Measurement } from '../types';
 
-const fmt = (v: number) => (Math.round(v * 10) / 10).toString();
+/** cm(내부 단위) → mm 표시 문자열 */
+const mm = (cm: number) => { const v = Math.round(cm * 100) / 10; return Number.isInteger(v) ? String(v) : v.toFixed(1); };
 
 export const SIZE_PRESETS: { label: string; w: number; h: number }[] = [
   { label: 'A4', w: 21, h: 29.7 },
@@ -14,10 +15,10 @@ export const SIZE_PRESETS: { label: string; w: number; h: number }[] = [
   { label: '4×6"', w: 10.2, h: 15.2 },
   { label: '8×10"', w: 20.3, h: 25.4 },
   { label: '11×14"', w: 27.9, h: 35.6 },
-  { label: '30×40', w: 30, h: 40 },
-  { label: '40×50', w: 40, h: 50 },
-  { label: '50×70', w: 50, h: 70 },
-  { label: '60×90', w: 60, h: 90 },
+  { label: '300×400', w: 30, h: 40 },
+  { label: '400×500', w: 40, h: 50 },
+  { label: '500×700', w: 50, h: 70 },
+  { label: '600×900', w: 60, h: 90 },
 ];
 
 // 기준으로 쓸 수 있는 물체 (규격이 정해진 것 위주)
@@ -29,10 +30,10 @@ const REF_GROUPS: { id: string; label: string; items: { label: string; name: str
     { label: 'B5', name: 'B5 용지', w: 18.2, h: 25.7 },
   ] },
   { id: 'tile', label: '타일', items: [
-    { label: '30×30', name: '타일 30×30', w: 30, h: 30 },
-    { label: '30×60', name: '타일 30×60', w: 30, h: 60 },
-    { label: '60×60', name: '타일 60×60', w: 60, h: 60 },
-    { label: '60×120', name: '타일 60×120', w: 60, h: 120 },
+    { label: '300×300', name: '타일 300×300', w: 30, h: 30 },
+    { label: '300×600', name: '타일 300×600', w: 30, h: 60 },
+    { label: '600×600', name: '타일 600×600', w: 60, h: 60 },
+    { label: '600×1200', name: '타일 600×1200', w: 60, h: 120 },
   ] },
   { id: 'card', label: '카드·엽서', items: [
     { label: '신용카드', name: '신용카드', w: 8.56, h: 5.4 },
@@ -94,7 +95,7 @@ function Section({ title, right, children }: { title: string; right?: ReactNode;
 }
 
 function Num({
-  label, value, onChange, step = 0.1, min, suffix = 'cm',
+  label, value, onChange, step = 0.1, min, suffix = 'mm',
 }: {
   label: string; value: number | null; onChange(v: number | null): void; step?: number; min?: number; suffix?: string;
 }) {
@@ -113,6 +114,15 @@ function Num({
         <em>{suffix}</em>
       </div>
     </label>
+  );
+}
+
+/** 내부는 cm, 화면 입력·표시는 mm */
+function Mm({ label, cm, onChange, min }: { label: string; cm: number | null; onChange(cm: number | null): void; min?: number }) {
+  return (
+    <Num label={label} suffix="mm" step={1} min={min}
+      value={cm == null ? null : Math.round(cm * 100) / 10}
+      onChange={(v) => onChange(v == null ? null : v / 10)} />
   );
 }
 
@@ -172,12 +182,35 @@ function Slider({
 }
 
 export function StraightenPanel({
-  adjust, setAdjust, onNext,
-}: { adjust: Adjust; setAdjust(a: Adjust): void; onNext(): void }) {
+  adjust, setAdjust, onNext, onAuto,
+}: {
+  adjust: Adjust; setAdjust(a: Adjust): void; onNext(): void;
+  /** 자동 보정 실행. 실패하면 안내 문구를 돌려준다 */
+  onAuto(mode: 'vertical' | 'full'): Promise<string | null>;
+}) {
   const set = (k: keyof Adjust) => (v: number) => setAdjust({ ...adjust, [k]: Math.round(v * 10) / 10 });
+  const [running, setRunning] = useState<'vertical' | 'full' | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const run = async (mode: 'vertical' | 'full') => {
+    setRunning(mode);
+    setMsg(null);
+    setMsg(await onAuto(mode));
+    setRunning(null);
+  };
   return (
     <>
       <Head step={1} title="사진 보정" />
+      <Section title="자동 보정">
+        <div className="auto-row">
+          <button className="btn-ghost" disabled={!!running} onClick={() => run('vertical')}>
+            {running === 'vertical' ? <span className="spinner" /> : null}수직 맞추기
+          </button>
+          <button className="btn-ghost" disabled={!!running} onClick={() => run('full')}>
+            {running === 'full' ? <span className="spinner" /> : null}수직·수평 맞추기
+          </button>
+        </div>
+        {msg && <div className="warn">{msg}</div>}
+      </Section>
       <Section title="원근 · 회전" right={
         <button className="text-btn" onClick={() => setAdjust(noAdjust())}>모두 초기화</button>
       }>
@@ -193,7 +226,7 @@ export function StraightenPanel({
 }
 
 // ───────────────────────── 1. 기준 설정 ─────────────────────────
-const sign = (v: number) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1);
+const sign = (cm: number) => (cm >= 0 ? '+' : '−') + mm(Math.abs(cm));
 
 function quality(sol: Solution | null, used: number) {
   if (!sol) return null;
@@ -253,16 +286,16 @@ export function CalibratePanel({
                   {!r.corners && <p className="sub">액자, 콘센트, 타일, 붙여둔 A4처럼 크기를 잴 수 있는 사각형이면 돼요</p>}
                   <input className="text-input" value={r.name} onChange={(e) => updateRef(r.id, { name: e.target.value })} />
                   <div className="row2">
-                    <Num label="실제 가로" value={r.widthCm || null} min={0} onChange={(v) => updateRef(r.id, { widthCm: v ?? 0 })} />
-                    <Num label="실제 세로" value={r.heightCm || null} min={0} onChange={(v) => updateRef(r.id, { heightCm: v ?? 0 })} />
+                    <Mm label="실제 가로" cm={r.widthCm || null} min={0} onChange={(v) => updateRef(r.id, { widthCm: v ?? 0 })} />
+                    <Mm label="실제 세로" cm={r.heightCm || null} min={0} onChange={(v) => updateRef(r.id, { heightCm: v ?? 0 })} />
                   </div>
                   <RefPresets onPick={(w, h, name) => updateRef(r.id, { widthCm: w, heightCm: h, ...(/^기준 \d+$/.test(r.name) ? { name } : {}) })} />
                   {ready && Math.max(r.widthCm, r.heightCm) < 15 && <div className="warn">작은 물체는 오차가 커요. 더 큰 물체를 함께 지정하세요</div>}
                   {r.corners && !isConvexQuad(r.corners) && <div className="warn">모서리 순서가 꼬였어요</div>}
                   {multi && d && (
                     <Stat rows={[
-                      ['계산된 크기', `${d.measuredW.toFixed(1)} × ${d.measuredH.toFixed(1)} cm`],
-                      ['차이', `${sign(d.measuredW - r.widthCm)} / ${sign(d.measuredH - r.heightCm)} cm`],
+                      ['계산된 크기', `${mm(d.measuredW)} × ${mm(d.measuredH)} mm`],
+                      ['차이', `${sign(d.measuredW - r.widthCm)} / ${sign(d.measuredH - r.heightCm)} mm`],
                     ]} />
                   )}
                   {bad && (
@@ -293,7 +326,7 @@ export function CalibratePanel({
 // ───────────────────────── 2. 배치 ─────────────────────────
 export function ArrangePanel({
   frames, selectedId, onAdd, onUpdate, onDelete, onDuplicate, onSelect,
-  snap, setSnap, showGrid, setShowGrid, opacity, setOpacity,
+  snap, setSnap, showGrid, setShowGrid, opacity, setOpacity, onExport, exporting, canExport,
 }: {
   frames: Frame[]; selectedId: string | null;
   onAdd(w: number, h: number, name: string): void;
@@ -304,36 +337,68 @@ export function ArrangePanel({
   snap: boolean; setSnap(v: boolean): void;
   showGrid: boolean; setShowGrid(v: boolean): void;
   opacity: number; setOpacity(v: number): void;
+  onExport(): void; exporting: boolean; canExport: boolean;
 }) {
-  const [w, setW] = useState<number | null>(30);
-  const [h, setH] = useState<number | null>(40);
+  const [w, setW] = useState<number | null>(null);
+  const [h, setH] = useState<number | null>(null);
   const [name, setName] = useState('');
+  const [adding, setAdding] = useState(false);
   const sel = frames.find((f) => f.id === selectedId) || null;
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  const resetForm = () => { setW(null); setH(null); setName(''); };
+  const add = () => {
+    onAdd(w!, h!, name.trim() || `액자 ${frames.length + 1}`);
+    resetForm();
+    setAdding(false);
+  };
+
+  // 액자를 선택하면 아래 편집 영역으로 스크롤 + 포커스
+  // (오른쪽 패널 안에서만 스크롤해서, 모바일에서 사진을 드래그하는 중에 페이지가 튀지 않게)
+  useEffect(() => {
+    if (!selectedId) return;
+    const id = requestAnimationFrame(() => {
+      const el = editorRef.current;
+      if (!el) return;
+      const sc = el.closest('.insp-scroll') as HTMLElement | null;
+      if (sc && sc.scrollHeight > sc.clientHeight) {
+        const top = sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 32;
+        sc.scrollTo({ top, behavior: 'smooth' });
+      }
+      el.focus({ preventScroll: true });
+      el.querySelector('.card')?.animate(
+        [{ boxShadow: '0 0 0 3px rgba(0,122,255,.55)' }, { boxShadow: '0 0 0 3px rgba(0,122,255,0)' }],
+        { duration: 1100, easing: 'ease-out' },
+      );
+    });
+    return () => cancelAnimationFrame(id);
+  }, [selectedId]);
 
   return (
     <>
       <Head step={3} title="액자 배치" />
 
-      <Section title="새 액자 추가">
-        <div className="row2">
-          <Num label="가로" value={w} min={0} onChange={setW} />
-          <Num label="세로" value={h} min={0} onChange={setH} />
-        </div>
-        <Chips onPick={(a, b) => { setW(a); setH(b); }} />
-        <div className="add-row">
-          <input className="text-input" placeholder="이름 (선택)" value={name} onChange={(e) => setName(e.target.value)} />
-          <button
-            className="btn-primary sm"
-            disabled={!w || !h}
-            onClick={() => { onAdd(w!, h!, name.trim() || `액자 ${frames.length + 1}`); setName(''); }}
-          >추가</button>
-        </div>
-      </Section>
+      {!adding ? (
+        <button className="btn-primary add-open" onClick={() => setAdding(true)}>+ 새 액자 추가</button>
+      ) : (
+        <Section title="새 액자 추가" right={<button className="text-btn" onClick={() => { resetForm(); setAdding(false); }}>취소</button>}>
+          <div className="row2">
+            <Mm label="가로" cm={w} min={0} onChange={setW} />
+            <Mm label="세로" cm={h} min={0} onChange={setH} />
+          </div>
+          <Chips onPick={(a, b) => { setW(a); setH(b); }} />
+          <div className="add-row">
+            <input className="text-input" placeholder="이름 (선택)" value={name} onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && w && h) add(); }} />
+            <button className="btn-primary sm" disabled={!w || !h} onClick={add}>추가</button>
+          </div>
+        </Section>
+      )}
 
       <Section title={`내 액자 ${frames.length}개`}>
         <div className="toggles">
           <label className="switch"><input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /><i />자석 정렬</label>
-          <label className="switch"><input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} /><i />10cm 격자</label>
+          <label className="switch"><input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} /><i />100mm 격자</label>
         </div>
         <label className="opacity">
           <span>액자 투명도</span>
@@ -349,7 +414,7 @@ export function ArrangePanel({
               <button key={f.id} className={`list-row ${f.id === selectedId ? 'on' : ''}`} onClick={() => onSelect(f.id)}>
                 <i style={{ background: f.color }} />
                 <span>{f.name}</span>
-                <em>{fmt(f.w)} × {fmt(f.h)}</em>
+                <em>{mm(f.w)} × {mm(f.h)}</em>
               </button>
             ))}
           </div>
@@ -357,12 +422,13 @@ export function ArrangePanel({
       </Section>
 
       {sel && (
+        <div ref={editorRef} tabIndex={-1} className="editor-anchor">
         <Section title="선택한 액자" right={<button className="text-btn" onClick={() => onSelect(null)}>닫기</button>}>
           <input className="text-input strong" value={sel.name} onChange={(e) => onUpdate(sel.id, { name: e.target.value })} />
           <div className="sub-label">크기</div>
           <div className="row2">
-            <Num label="가로" value={sel.w} min={0} onChange={(v) => v && onUpdate(sel.id, { w: v })} />
-            <Num label="세로" value={sel.h} min={0} onChange={(v) => v && onUpdate(sel.id, { h: v })} />
+            <Mm label="가로" cm={sel.w} min={0} onChange={(v) => v && onUpdate(sel.id, { w: v })} />
+            <Mm label="세로" cm={sel.h} min={0} onChange={(v) => v && onUpdate(sel.id, { h: v })} />
           </div>
           <div className="rot-row">
             <Num label="회전" suffix="°" value={sel.rot ?? 0} onChange={(v) => onUpdate(sel.id, { rot: Math.max(-180, Math.min(180, v ?? 0)) })} />
@@ -370,7 +436,7 @@ export function ArrangePanel({
           </div>
           <div className="sub-label">스타일</div>
           <div className="row2">
-            <Num label="프레임 두께" value={sel.border} min={0} onChange={(v) => onUpdate(sel.id, { border: v ?? 0 })} />
+            <Mm label="프레임 두께" cm={sel.border} min={0} onChange={(v) => onUpdate(sel.id, { border: v ?? 0 })} />
             <label className="field"><span className="field-label">프레임 색</span>
               <input className="color" type="color" value={sel.color} onChange={(e) => onUpdate(sel.id, { color: e.target.value })} />
             </label>
@@ -395,7 +461,13 @@ export function ArrangePanel({
             <button className="btn-danger sm" onClick={() => onDelete(sel.id)}>삭제</button>
           </div>
         </Section>
+        </div>
       )}
+      <div className="foot-actions">
+        <button className="btn-primary" disabled={!canExport || exporting} onClick={onExport}>
+          {exporting ? '저장 중…' : '결과를 PNG로 저장'}
+        </button>
+      </div>
     </>
   );
 }
@@ -413,7 +485,7 @@ export function MeasurePanel({
             {list.map((m, i) => (
               <div key={m.id} className="list-row">
                 <span>측정 {i + 1}</span>
-                <em className="big-num">{dist(apply(Hiw, m.a), apply(Hiw, m.b)).toFixed(1)} cm</em>
+                <em className="big-num">{mm(dist(apply(Hiw, m.a), apply(Hiw, m.b)))} mm</em>
                 <button className="icon-btn" onClick={() => onChange(list.filter((x) => x.id !== m.id))}>✕</button>
               </div>
             ))}

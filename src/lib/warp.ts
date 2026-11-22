@@ -7,7 +7,7 @@ let gl: WebGLRenderingContext | null = null;
 let glCanvas: HTMLCanvasElement | null = null;
 let prog: WebGLProgram | null = null;
 let tex: WebGLTexture | null = null;
-let texSrc: HTMLImageElement | null = null;
+let texKey = ''; // 지금 텍스처에 올라간 사진 (img 요소는 재사용되므로 주소로 구분)
 let glFailed = false;
 
 const VS = `attribute vec2 a; void main(){ gl_Position = vec4(a, 0.0, 1.0); }`;
@@ -69,10 +69,11 @@ export function renderCorrected(img: HTMLImageElement, corr: Correction, target:
   const maxView = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array;
   if (img.naturalWidth > max || img.naturalHeight > max || W > maxView[0] || H > maxView[1]) return false;
 
-  if (texSrc !== img) {
+  const key = `${img.currentSrc || img.src}|${img.naturalWidth}x${img.naturalHeight}`;
+  if (texKey !== key) {
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-    texSrc = img;
+    texKey = key;
   }
   glCanvas.width = W;
   glCanvas.height = H;
@@ -95,5 +96,5 @@ export function renderCorrected(img: HTMLImageElement, corr: Correction, target:
 
 /** 텍스처 캐시 해제 (사진 교체 시) */
 export function resetWarpCache() {
-  texSrc = null;
+  texKey = '';
 }

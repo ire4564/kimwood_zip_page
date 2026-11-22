@@ -69,7 +69,8 @@ interface Props {
   onMeasurements(m: Measurement[]): void;
 }
 
-const fmt = (v: number) => (Math.round(v * 10) / 10).toFixed(1);
+/** cm(내부 단위) → mm 정수 문자열 */
+const fmt = (cm: number) => String(Math.round(cm * 10));
 
 export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, ref) {
   const box = useRef<HTMLDivElement>(null);
@@ -170,11 +171,11 @@ export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, r
         ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
       };
       if (dir[e.key]) {
-        const step = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+        const step = e.shiftKey ? 1 : e.altKey ? 0.01 : 0.1; // 1mm (Shift 10mm, Alt 0.1mm)
         const [dx, dy] = dir[e.key];
         if (P.mode === 'arrange' && P.selectedId) {
           const f = P.frames.find((f) => f.id === P.selectedId);
-          if (f) P.onFrame(f.id, { x: +(f.x + dx * step).toFixed(2), y: +(f.y + dy * step).toFixed(2) });
+          if (f) P.onFrame(f.id, { x: +(f.x + dx * step).toFixed(3), y: +(f.y + dy * step).toFixed(3) });
           e.preventDefault();
         } else if (P.mode === 'calibrate' && activeHandleRef.current != null && P.activeRef?.corners) {
           const s = e.shiftKey ? 5 : e.altKey ? 0.25 : 1; // 원본 픽셀 단위
@@ -629,7 +630,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, r
                   ) : (
                     <div className="ph" style={{ fontSize: Math.max(12, Math.min(f.w, f.h) * K * 0.07) }}>
                       <b>{f.name}</b>
-                      <span>{fmt(f.w)} × {fmt(f.h)} cm</span>
+                      <span>{fmt(f.w)} × {fmt(f.h)} mm</span>
                     </div>
                   )}
                 </div>
@@ -673,9 +674,9 @@ export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, r
               <polygon points={ptsStr(qs)} fill="rgba(255,149,0,0.14)" stroke="#FF9500" strokeWidth={2 / z} />
               {label({ x: (qs[0].x + qs[2].x) / 2, y: (qs[0].y + qs[2].y) / 2 }, p.activeRef.name, '#C93400')}
               {p.activeRef.widthCm > 0 && label(
-                { x: mid(qs[0], qs[1]).x, y: mid(qs[0], qs[1]).y - 14 / z }, `${p.activeRef.widthCm} cm`, '#C93400')}
+                { x: mid(qs[0], qs[1]).x, y: mid(qs[0], qs[1]).y - 14 / z }, `${fmt(p.activeRef.widthCm)} mm`, '#C93400')}
               {p.activeRef.heightCm > 0 && label(
-                { x: mid(qs[0], qs[3]).x - 30 / z, y: mid(qs[0], qs[3]).y }, `${p.activeRef.heightCm} cm`, '#C93400')}
+                { x: mid(qs[0], qs[3]).x - 30 / z, y: mid(qs[0], qs[3]).y }, `${fmt(p.activeRef.heightCm)} mm`, '#C93400')}
               {qs.map((c, i) => (
                 <g key={i} data-handle={i} className="hit">
                   <circle cx={c.x} cy={c.y} r={14 / z} fill="transparent" />
@@ -705,8 +706,8 @@ export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, r
                   );
                 })}
                 {rotDeg !== null && label(c, `${rotDeg.toFixed(1)}°`, '#0062CC')}
-                {label({ x: mid(pts[0], pts[1]).x, y: mid(pts[0], pts[1]).y - 13 / z }, `${fmt(selected.w)} cm`, '#0062CC')}
-                {label({ x: mid(pts[0], pts[3]).x - 26 / z, y: mid(pts[0], pts[3]).y }, `${fmt(selected.h)} cm`, '#0062CC')}
+                {label({ x: mid(pts[0], pts[1]).x, y: mid(pts[0], pts[1]).y - 13 / z }, `${fmt(selected.w)} mm`, '#0062CC')}
+                {label({ x: mid(pts[0], pts[3]).x - 26 / z, y: mid(pts[0], pts[3]).y }, `${fmt(selected.h)} mm`, '#0062CC')}
               </g>
             );
           })()}
@@ -741,7 +742,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(function Viewport(p, r
                     <circle cx={ms[k].x} cy={ms[k].y} r={4.5 / z} fill="#fff" stroke="#34C759" strokeWidth={2 / z} />
                   </g>
                 ))}
-                {label({ x: mid(ms.a, ms.b).x, y: mid(ms.a, ms.b).y - 12 / z }, `${fmt(d)} cm`, '#248A3D')}
+                {label({ x: mid(ms.a, ms.b).x, y: mid(ms.a, ms.b).y - 12 / z }, `${fmt(d)} mm`, '#248A3D')}
               </g>
             );
           })}

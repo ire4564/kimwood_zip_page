@@ -77,7 +77,7 @@ button:disabled { cursor: default; }
 .sidenav-item:disabled { opacity: 0.45; }
 
 .sidebar-bottom { margin-top: auto; padding-top: 18px; display: flex; flex-direction: column; gap: 10px; }
-.side-links { display: flex; flex-direction: column; background: var(--bg-cell); border-radius: var(--r-cell); overflow: hidden; }
+.side-links { display: flex; flex-direction: column; background: var(--bg-cell); border-radius: var(--r-btn); overflow: hidden; }
 .side-links > * {
   text-align: left; font-size: 13px; color: var(--blue); padding: 11px 16px; cursor: pointer; position: relative;
 }
@@ -85,6 +85,9 @@ button:disabled { cursor: default; }
 .side-links > *:hover:not(:disabled) { background: var(--gray6); }
 .side-links > *:disabled { color: var(--label-3); }
 .side-links .danger { color: var(--red); }
+@media (min-width: 901px) {
+  .sidebar-bottom .side-links > * { height: 44px; padding: 0 16px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; }
+}
 .sidebar-foot { padding: 4px 16px 0; font-size: 10px; color: var(--label-2); }
 
 /* ── 버튼 ─────────────────────────────── */
@@ -101,7 +104,7 @@ button:disabled { cursor: default; }
 .btn-danger { background: var(--tint-red); color: var(--red); }
 .btn-danger:hover { background: rgba(255, 59, 48, 0.18); }
 .sm { height: 32px; padding: 0 12px; font-size: 12px; border-radius: 8px; font-weight: 500; }
-.block { width: 100%; height: 50px; border-radius: 14px; font-size: 15px; }
+.block { width: 100%; height: 44px; border-radius: var(--r-btn); font-size: 15px; }
 .text-btn { font-size: 13px; color: var(--blue); font-weight: 400; }
 .text-btn:hover { opacity: .7; }
 .icon-btn {
@@ -422,3 +425,16 @@ button.list-row:hover { background: var(--gray6); }
 .overlay .rot {
   cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M5 12a7 7 0 1 1 2.05 4.95' fill='none' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M5 12a7 7 0 1 1 2.05 4.95' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'/%3E%3Cpath d='M2.5 10.5 5 14l3-3' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M2.5 10.5 5 14l3-3' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") 12 12, alias;
 }
+
+/* 자동 보정 */
+.auto-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.auto-row .btn-ghost { height: 40px; font-size: 13px; padding: 0 8px; }
+.spinner {
+  width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(0,122,255,.25); border-top-color: var(--blue);
+  animation: spin .8s linear infinite; flex: none;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 새 액자 추가 / 선택한 액자로 이동 */
+.add-open { width: 100%; height: 44px; }
+.editor-anchor { outline: none; display: flex; flex-direction: column; }

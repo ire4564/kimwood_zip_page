@@ -3,8 +3,9 @@ import { Viewport, type ViewportHandle } from './components/Viewport';
 import { ArrangePanel, CalibratePanel, MeasurePanel, StraightenPanel } from './components/Panels';
 import { solveCalibration, poseCorners, type RefFrame } from './lib/calibrate';
 import { computeCorrection, isIdentity, noAdjust } from './lib/correction';
-import { blobToDataURL, dataURLToBlob, idbGet, idbSet, loadImage } from './lib/storage';
+import { idbGet, idbSet, loadImage } from './lib/storage';
 import { exportPNG } from './lib/export';
+import { autoStraighten, detectLines, type LineSeg } from './lib/autoStraighten';
 import { useHistory } from './lib/useHistory';
 import { emptyProject, newRef, normalizeCal, uid, type Calibration, type Frame, type Mode, type Project, type Quad } from './types';
 
@@ -167,6 +168,23 @@ export default function App() {
     }
   };
 
+  // 자동 수직·수평: 사진마다 직선 검출 결과를 한 번만 계산해 둔다
+  const linesCache = useRef<{ url: string; segs: LineSeg[] } | null>(null);
+  const runAuto = async (mode: 'vertical' | 'full'): Promise<string | null> => {
+    const img = vp.current?.imageEl();
+    if (!img || !img.naturalWidth) return '사진을 불러오는 중이에요. 잠시 후 다시 눌러주세요.';
+    await new Promise((r) => setTimeout(r, 30)); // 버튼 상태가 먼저 그려지도록
+    if (linesCache.current?.url !== imageUrl) linesCache.current = { url: imageUrl, segs: detectLines(img) };
+    const res = autoStraighten(linesCache.current.segs, proj.imageW, proj.imageH, mode);
+    if (!res) {
+      return mode === 'full'
+        ? '가로·세로 직선을 충분히 찾지 못했어요. "수직 맞추기"를 쓰거나 직접 조정해주세요.'
+        : '세로 직선을 충분히 찾지 못했어요. 직접 조정해주세요.';
+    }
+    setProj((p) => ({ ...p, adjust: res.adjust }));
+    return null;
+  };
+
   const doExport = async () => {
     const img = vp.current?.imageEl();
     if (!img || !Hwi) return;
@@ -180,28 +198,6 @@ export default function App() {
       setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     } finally {
       setBusy(false);
-    }
-  };
-
-  const saveJSON = async () => {
-    if (!proj.imageBlob) return;
-    const data = { ...proj, imageBlob: undefined, image: await blobToDataURL(proj.imageBlob), version: 1 };
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
-    a.download = 'wall-project.json';
-    a.click();
-  };
-  const loadJSON = async (file: File) => {
-    try {
-      const d = JSON.parse(await file.text());
-      const blob = await dataURLToBlob(d.image);
-      const calibration = normalizeCal(d.calibration);
-      resetHistory();
-      setProj({ ...emptyProject(), ...d, calibration, adjust: { ...noAdjust(), ...d.adjust }, imageBlob: blob, image: undefined });
-      setMode(solveCalibration(calibration.refs) ? 'arrange' : 'straighten');
-      setSelectedId(null);
-    } catch {
-      alert('프로젝트 파일을 읽을 수 없어요.');
     }
   };
 
@@ -255,10 +251,6 @@ export default function App() {
             {busy ? '저장 중…' : 'PNG로 저장'}
           </button>
           <div className="side-links">
-            <button disabled={!proj.imageBlob} onClick={saveJSON}>프로젝트 저장</button>
-            <label>프로젝트 열기
-              <input type="file" accept="application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) loadJSON(f); e.target.value = ''; }} />
-            </label>
             <button className="danger" disabled={!proj.imageBlob} onClick={() => {
               if (confirm('사진과 배치를 모두 지울까요?')) { resetHistory(); setProj(emptyProject()); setSelectedId(null); setMode('straighten'); }
             }}>초기화</button>
@@ -308,7 +300,7 @@ export default function App() {
           <section className="inspector">
             <div className="insp-scroll">
               {mode === 'straighten' && (
-                <StraightenPanel adjust={proj.adjust} setAdjust={(a) => setProj((p) => ({ ...p, adjust: a }))} onNext={() => setMode('calibrate')} />
+                <StraightenPanel adjust={proj.adjust} setAdjust={(a) => setProj((p) => ({ ...p, adjust: a }))} onNext={() => setMode('calibrate')} onAuto={runAuto} />
               )}
               {mode === 'calibrate' && (
                 <CalibratePanel
@@ -321,6 +313,7 @@ export default function App() {
                   frames={proj.frames} selectedId={selectedId}
                   onAdd={addFrame} onUpdate={updateFrame} onDelete={deleteFrame} onDuplicate={duplicate} onSelect={setSelectedId}
                   snap={snap} setSnap={setSnap} showGrid={showGrid} setShowGrid={setShowGrid} opacity={opacity} setOpacity={setOpacity}
+                  onExport={doExport} exporting={busy} canExport={!!Hwi}
                 />
               )}
               {mode === 'measure' && (
@@ -356,7 +349,7 @@ function Landing({ onPhoto }: { onPhoto(f: File): void }) {
           {[
             ['01', '사진 보정', '회전과 원근으로 벽을 곧게'],
             ['02', '기준 지정', '액자·타일·A4 등 크기를 아는 물체'],
-            ['03', '액자 배치', 'cm 단위로 배치하고 간격 확인'],
+            ['03', '액자 배치', 'mm 단위로 배치하고 간격 확인'],
           ].map(([n, t, d]) => (
             <div key={t} className="flow-item">
               <span className="nav-num">{n}</span>
